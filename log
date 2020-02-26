@@ -1,0 +1,164 @@
+In file included from ./SQ-fuzz.cpp:29:0:
+./alloc-inl.h: In function ‘void* DFL_ck_alloc_nozero(u32)’:
+./alloc-inl.h:118:7: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+   ret += ALLOC_OFF_HEAD;
+       ^
+./alloc-inl.h: In function ‘void DFL_ck_free(void*)’:
+./alloc-inl.h:161:12: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+   free(mem - ALLOC_OFF_HEAD);
+            ^
+./alloc-inl.h: In function ‘void* DFL_ck_realloc(void*, u32)’:
+./alloc-inl.h:191:14: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+     orig     -= ALLOC_OFF_HEAD;
+              ^
+./alloc-inl.h:225:7: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+   ret += ALLOC_OFF_HEAD;
+       ^
+./alloc-inl.h:232:16: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+     memset(ret + old_size, 0, size - old_size);
+            ~~~~^~~~~~~~~~
+./alloc-inl.h: In function ‘u8* DFL_ck_strdup(u8*)’:
+./alloc-inl.h:278:7: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+   ret += ALLOC_OFF_HEAD;
+       ^
+./alloc-inl.h: In function ‘void* DFL_ck_memdup(void*, u32)’:
+./alloc-inl.h:302:7: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+   ret += ALLOC_OFF_HEAD;
+       ^
+In file included from ./SQ-fuzz.cpp:28:0:
+./SQ-fuzz.cpp: In function ‘void show_stats()’:
+./debug.h:44:16: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+ #  define cCYA "\x1b[0;36m"
+                ^
+./SQ-fuzz.cpp:4571:23: note: in expansion of macro ‘cCYA’
+     char* cpu_color = cCYA;
+                       ^~~~
+./debug.h:48:16: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+ #  define cLGN "\x1b[1;92m"
+                ^
+./SQ-fuzz.cpp:4576:19: note: in expansion of macro ‘cLGN’
+       cpu_color = cLGN;
+                   ^~~~
+./debug.h:47:16: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+ #  define cLRD "\x1b[1;91m"
+                ^
+./SQ-fuzz.cpp:4580:66: note: in expansion of macro ‘cLRD’
+     if (!no_cpu_meter_red && cur_utilization >= 150) cpu_color = cLRD;
+                                                                  ^~~~
+./SQ-fuzz.cpp: In function ‘void write_with_gap(void*, u32, u32, u32)’:
+./SQ-fuzz.cpp:6061:34: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+   if (tail_len) ck_write(fd, mem + skip_at + skip_len, tail_len, out_file);
+                              ~~~~^~~
+./debug.h:248:26: note: in definition of macro ‘ck_write’
+     s32 _res = write(fd, buf, _len); \
+                          ^~~
+./SQ-fuzz.cpp:6061:44: warning: pointer of type ‘void *’ used in arithmetic [-Wpointer-arith]
+   if (tail_len) ck_write(fd, mem + skip_at + skip_len, tail_len, out_file);
+                              ~~~~~~~~~~~~~~^~~
+./debug.h:248:26: note: in definition of macro ‘ck_write’
+     s32 _res = write(fd, buf, _len); \
+                          ^~~
+./SQ-fuzz.cpp: In function ‘u8 fuzz_one(char**)’:
+./SQ-fuzz.cpp:6643:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "flip1";
+                 ^~~~~~~
+./SQ-fuzz.cpp:6645:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "bitflip 1/1";
+                 ^~~~~~~~~~~~~
+./SQ-fuzz.cpp:6739:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "bitflip 2/1";
+                 ^~~~~~~~~~~~~
+./SQ-fuzz.cpp:6740:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "flip2";
+                 ^~~~~~~
+./SQ-fuzz.cpp:6766:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "bitflip 4/1";
+                 ^~~~~~~~~~~~~
+./SQ-fuzz.cpp:6767:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "flip4";
+                 ^~~~~~~
+./SQ-fuzz.cpp:6821:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "bitflip 8/8";
+                 ^~~~~~~~~~~~~
+./SQ-fuzz.cpp:6822:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "flip8";
+                 ^~~~~~~
+./SQ-fuzz.cpp:6891:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "bitflip 16/8";
+                 ^~~~~~~~~~~~~~
+./SQ-fuzz.cpp:6892:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "flip16";
+                 ^~~~~~~~
+./SQ-fuzz.cpp:6928:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "bitflip 32/8";
+                 ^~~~~~~~~~~~~~
+./SQ-fuzz.cpp:6929:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "flip32";
+                 ^~~~~~~~
+./SQ-fuzz.cpp:6970:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "arith 8/8";
+                 ^~~~~~~~~~~
+./SQ-fuzz.cpp:6971:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "arith8";
+                 ^~~~~~~~
+./SQ-fuzz.cpp:7036:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "arith 16/8";
+                 ^~~~~~~~~~~~
+./SQ-fuzz.cpp:7037:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "arith16";
+                 ^~~~~~~~~
+./SQ-fuzz.cpp:7130:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "arith 32/8";
+                 ^~~~~~~~~~~~
+./SQ-fuzz.cpp:7131:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "arith32";
+                 ^~~~~~~~~
+./SQ-fuzz.cpp:7224:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "interest 8/8";
+                 ^~~~~~~~~~~~~~
+./SQ-fuzz.cpp:7225:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "int8";
+                 ^~~~~~
+./SQ-fuzz.cpp:7279:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "interest 16/8";
+                 ^~~~~~~~~~~~~~~
+./SQ-fuzz.cpp:7280:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "int16";
+                 ^~~~~~~
+./SQ-fuzz.cpp:7347:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "interest 32/8";
+                 ^~~~~~~~~~~~~~~
+./SQ-fuzz.cpp:7348:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "int32";
+                 ^~~~~~~
+./SQ-fuzz.cpp:7422:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "user extras (over)";
+                 ^~~~~~~~~~~~~~~~~~~~
+./SQ-fuzz.cpp:7423:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "ext_UO";
+                 ^~~~~~~~
+./SQ-fuzz.cpp:7480:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "user extras (insert)";
+                 ^~~~~~~~~~~~~~~~~~~~~~
+./SQ-fuzz.cpp:7481:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "ext_UI";
+                 ^~~~~~~~
+./SQ-fuzz.cpp:7531:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_name  = "auto extras (over)";
+                 ^~~~~~~~~~~~~~~~~~~~
+./SQ-fuzz.cpp:7532:17: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   stage_short = "ext_AO";
+                 ^~~~~~~~
+./SQ-fuzz.cpp:7599:19: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+     stage_name  = "havoc";
+                   ^~~~~~~
+./SQ-fuzz.cpp:7600:19: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+     stage_short = "havoc";
+                   ^~~~~~~
+./SQ-fuzz.cpp:7612:19: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+     stage_short = "splice";
+                   ^~~~~~~~
+./SQ-fuzz.cpp: In function ‘u8 save_if_interesting(char**, void*, u32, u8)’:
+./SQ-fuzz.cpp:8170:15: warning: ISO C++ forbids converting a string constant to ‘char*’ [-Wwrite-strings]
+   char  *fn = "";
+               ^~

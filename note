@@ -1,0 +1,51 @@
+
+g++ -DDOC_PATH=\"/usr/local/share/doc/afl\" ./SQ-fuzz.cpp
+-DDOC_PATH就可以對程式內的DOC_PATH定義micro，所以才會在裡面找不到對DOC_PATH的宣告
+
+g++ -Idl -DDOC_PATH=\"/home/tommy/\" -DBIN_PATH=\"/usr/local/bin\"   ./SQ-fuzz.cpp  -ldl
+
+./a.out -i a -o b -x ~/AFL/dictionaries/png.dict  -- ./test/a.out @@
+
+-ldl才能正常引用dlopen等等
+https://blog.csdn.net/qq_22122811/article/details/52738134
+其他進階的議題：
+https://www.tldp.org/HOWTO/pdf/C++-dlopen.pdf
+
+------------------------------------------------------------------------------
+
+希望有的功能：
+
+一：
+將每個受測目標歸類為一個物件
+那個物件描述了有哪些argv可供我們變異
+並且也描述了那個物件所要使用的mutator....等等
+
+可以像是群聯那樣的想法
+用同一個應用程式，去承接不同的應用程式，不同的可變動範圍，不同的變異方式
+
+
+
+
+二：
+這個以前就寫過了，但還是提一下
+自動執行所有crash & hang的測試資料，並且用--------------區隔每個檔案的輸出
+
+
+1. 解析設定檔
+設定檔裡面包含了有哪些目標程式(objdump? gcc? flex?)
+目標程式是插樁過得？還是沒有插樁過得？或在這個選項直接選擇想要的模式(-i, -o, -Q...)
+目標程式想要用那一種mutation engine？（我目前就把每個mutation engine都當作fuzz_one實做，包含變異跟執行的功能）
+有沒有要開啟argv fuzzing?有可能這個東西也當作mutation engine的一部分吧
+我的想法是列一個虛擬檔案，把這個虛擬檔案當成一般的測試資料來進行變異，最後要執行的時候，再把這個檔案翻譯成各個目標
+但是碰上gcc/g++這類有語法語意的東西，可能也沒辦法完全這樣做了。
+但是可以把"虛擬檔案"當作一個概念，在變異測試輸入不要這樣做，但其他地方可以這樣做
+
+2. 選擇目標(objdump, gcc ??)
+
+3. 照著設定檔的指示，用特定的mutation engine進行fuzzing
+
+---------
+
+開始測試c++的afl fuzz跟 c的afl fuzz哪邊比較快
+目前是afl-fuzz快上一點點 
+但真的就一點點
