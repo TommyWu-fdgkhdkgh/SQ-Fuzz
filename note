@@ -2,7 +2,7 @@
 g++ -DDOC_PATH=\"/usr/local/share/doc/afl\" ./SQ-fuzz.cpp
 -DDOC_PATH就可以對程式內的DOC_PATH定義micro，所以才會在裡面找不到對DOC_PATH的宣告
 
-g++ -Idl -DDOC_PATH=\"/home/tommy/\" -DBIN_PATH=\"/usr/local/bin\"   ./SQ-fuzz.cpp  -ldl
+g++ -Idl -DDOC_PATH=\"/home/tommy/\" -DBIN_PATH=\"/usr/local/bin\"   ./SQ-Fuzz.cpp  -ldl
 
 ./a.out -i a -o b -x ~/AFL/dictionaries/png.dict  -- ./test/a.out @@
 

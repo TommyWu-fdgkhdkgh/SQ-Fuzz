@@ -737,7 +737,7 @@ static inline void classify_counts(u32* mem) {
 int main(int argc, char *argv[]) {
 
   SAYF(cCYA "afl-fuzz " cBRI VERSION cRST " by <lcamtuf@google.com>\n"); 
-  SAYF(cCYA " SQ-fuzz " cBRI SQVERSION cRST " by <fdgkhdkgh@gmail.com>\n"); 
+  SAYF(cCYA " SQ-fuzz " cBRI SQVERSION cRST "  by <fdgkhdkgh@gmail.com>\n"); 
 
   doc_path = access(DOC_PATH, F_OK) ? "docs" : DOC_PATH;
   SAYF("doc_path : %s\n", doc_path);   
