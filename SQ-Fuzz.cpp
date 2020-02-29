@@ -28,6 +28,7 @@
 #include "debug.h"
 #include "alloc-inl.h"
 #include "hash.h"
+#include "parser.h"
 
 /* A toggle to export some variables when building as a library. Not very
    useful for the general public. */
@@ -103,7 +104,9 @@ const char *doc_path;
 
 struct queue_entry {
 
-  char* fname;                          /* File name for the test case      */
+  char* fname;                        /* File name for the test case      */
+  char** argvs;                       /* The file's argv */
+
   u32 len;                            /* Input length                     */
 
   u8  cal_failed,                     /* Calibration failed?              */
@@ -554,7 +557,11 @@ static u8 fuzz_one(char** argv);                 /* Take the current entry from 
 						    queue, fuzz it for a while. This function 
 						    is a tad too long... returns 0 if fuzzed 
 						    successfully, 1 if skipped or bailed out. */
+static u8 argv_fuzz_one();
 
+static std::map<std::string, std::vector<std::string>> VARIABLES;
+static std::vector<std::vector<std::string>> PARAMETERS_MUST;
+static std::vector<std::vector<std::string>> PARAMETERS_NOT_MUST;
 
 /* Destructively simplify trace by eliminating hit count information
    and replacing it with 0x80 or 0x01 depending on whether the tuple
@@ -746,13 +753,14 @@ int main(int argc, char *argv[]) {
   char** use_argv;
   u8  exit_1 = !!getenv("AFL_BENCH_JUST_ONE");
 
+  char *xml_position;
 
   //getopt(argc, argv, "+i:")
   //一個冒號表示後面有參數
   //兩個冒號表示後面可以有參數，也可以沒有
 
   //Q: 第一個"+"的意義？
-  while((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:Q")) > 0) {
+  while((opt = getopt(argc, argv, "+i:o:s:f:m:t:T:dnCB:S:M:x:Q")) > 0) {
     switch(opt) {
       case 'i': /* input dir */
 	if(in_dir) FATAL("Multiple -i options not supported");
@@ -768,6 +776,18 @@ int main(int argc, char *argv[]) {
         if (out_dir) FATAL("Multiple -o options not supported");
         out_dir = optarg;
         break;
+
+      case 's': /* setting xml file */
+        
+        xml_position = optarg;	
+        if( access( xml_position, F_OK ) != -1 ) {
+          OKF("xml_position : %s", xml_position); 
+	  parseXML(xml_position, &VARIABLES, &PARAMETERS_MUST, &PARAMETERS_NOT_MUST);
+        } else {
+          FATAL("File doesn't exist!");
+        }
+
+	break;
 
       case 'M': { /* master sync ID */
 
@@ -1105,6 +1125,18 @@ int main(int argc, char *argv[]) {
 
     }
 
+
+    /*
+    skipped_fuzz = argv_fuzz_one();
+    
+    if (!stop_soon &&) ....
+    ...
+
+    if (stop_soon) break;
+    
+    */
+    skipped_fuzz = argv_fuzz_one();
+
     skipped_fuzz = fuzz_one(use_argv);
 
     if (!stop_soon && sync_id && !skipped_fuzz) {
@@ -1182,7 +1214,8 @@ static void usage(u8* argv0) {
        "Required parameters:\n\n"
 
        "  -i dir        - input directory with test cases\n"
-       "  -o dir        - output directory for fuzzer findings\n\n"
+       "  -o dir        - output directory for fuzzer findings\n"
+       "  -s xmlfile    - setting file for fuzzed project\n\n"
 
        "Execution control settings:\n\n"
 
@@ -1928,6 +1961,12 @@ EXP_ST void setup_dirs_fds(void) {
   /* All recorded hangs. */
 
   tmp = alloc_printf("%s/hangs", out_dir);
+  if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
+  ck_free(tmp);
+
+  /* queue information */
+
+  tmp = alloc_printf("%s/queue_info", out_dir);
   if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
   ck_free(tmp);
 
@@ -6468,6 +6507,12 @@ static void write_crash_readme(void) {
 
 }
 
+
+static u8 argv_fuzz_one() {
+  printf("argv_fuzz_one()\n");
+
+  return 0;
+}
 
 //-------------------
 

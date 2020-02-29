@@ -1,0 +1,18 @@
+<root>
+    <VARIABLE>
+        <NAME>VIDEO_FORMAT</NAME>	
+	<ELEMENT>mov</ELEMENT>
+	<ELEMENT>mp4</ELEMENT>
+    </VARIABLE>
+
+    <PARAMETER>
+        <MUST>true</MUST>
+	<ELEMENT>-y</ELEMENT>
+    </PARAMETER>
+    <PARAMETER>
+        <MUST>false</MUST>
+	<ELEMENT>-i</ELEMENT>
+        <ELEMENT>\[INPUT_FILE\]</ELEMENT>
+	<ELEMENT>output_file.\[VIDEO_FORMAT\]</ELEMENT>
+    </PARAMETER>
+</root>

@@ -3,6 +3,9 @@ g++ -DDOC_PATH=\"/usr/local/share/doc/afl\" ./SQ-fuzz.cpp
 -DDOC_PATH就可以對程式內的DOC_PATH定義micro，所以才會在裡面找不到對DOC_PATH的宣告
 
 g++ -Idl -DDOC_PATH=\"/home/tommy/\" -DBIN_PATH=\"/usr/local/bin\"   ./SQ-Fuzz.cpp  -ldl
+g++ -Llibxml2-2.9.10/.libs -Ilibxml2-2.9.10/include ./parser.cpp -lxml2
+
+https://github.com/fdgkhdkgh/winafl/blob/master/custom_xmlparse.c 我以前的寫法
 
 ./a.out -i a -o b -x ~/AFL/dictionaries/png.dict  -- ./test/a.out @@
 
@@ -10,6 +13,68 @@ g++ -Idl -DDOC_PATH=\"/home/tommy/\" -DBIN_PATH=\"/usr/local/bin\"   ./SQ-Fuzz.c
 https://blog.csdn.net/qq_22122811/article/details/52738134
 其他進階的議題：
 https://www.tldp.org/HOWTO/pdf/C++-dlopen.pdf
+
+------------
+
+2020/02/29
+
+都沒考慮到sync的問題，之後要注意一下
+
+
+------------
+
+2020/02/27
+
+\[VIDEO_FORMAT\]  在\[ \]間的就是變數名稱，當想要顯示"\["的時候，就用"\\["把它跳脫掉
+
+內建的變數名稱
+STRING
+STRING:0:100 : 長度0~100的字串
+INT
+INT:-10:10   : -10~10間的隨機數字
+DOUBLE
+BOOL
+INPUT_FILE   : 作為輸入的檔案名稱
+
+PARAMETER裡，MUST欄位為true的話，就是一定需要加入的命令列引數
+MUST欄位為false的話，就是需要隨機接上的參數
+
+改變一下順序
+先實做出原本沒有多目標覆蓋率指引的argv-fuzz + afl-fuzz
+在這邊存個檔（ 可以當作比較目標，比較有多目標覆蓋率指引，跟沒有的差異）
+
+最後可以多塞一點各式各樣的變異引擎，然後混著用看看
+例如argv-fuzz, xmlfuzzer(http://komar.in/en/code/xmlfuzzer) , afl-fuzz可以混搭
+
+
+prog-fuzz要跟afl的變異引擎一起使用的話，就必須要想辦法把節點的資訊存成檔案，並能在下一次進行變異時引用
+
+
+需要測試效率：
+prog-fuzz v.s. afl-fuzz 分支覆蓋率
+Multi-target (No Multi-target coverage driven) v.s. Multi-target (has Multi-target coverage driven) 分支覆蓋率
+Multi-taget v.s. normal afl-fuzz 分支覆蓋率
+
+選擇要用哪一個fuzzing engine放在個別project的設定檔好了（因為也是看個別project需要）
+
+------------
+
+2020/02/26
+
+可以在queue這個結構裡新增argv
+
+可以新增資料夾 queue_state，儲存每個queue對應的檔案名稱，以及argv
+
+在add_to_queue這個function的參數可以多加一個argv
+
+可以開始把分析json格式的library或是分析xml的library也都加進來
+
+1. 先做好儲存argv到queue結構，以及輸出queue結構的資訊到queue_info
+2. 把之前做的粗糙argv fuzzing帶進來，看看兩邊的效果有沒有差異(一個是有意識到多目標的覆蓋率回饋，一個是沒有亦是道有多目標的覆蓋率回饋) 
+
+3. 開始認真做argv fuzzing
+
+
 
 ------------------------------------------------------------------------------
 
@@ -49,3 +114,12 @@ https://www.tldp.org/HOWTO/pdf/C++-dlopen.pdf
 開始測試c++的afl fuzz跟 c的afl fuzz哪邊比較快
 目前是afl-fuzz快上一點點 
 但真的就一點點
+
+
+--------
+
+功能：可以把特定的變數換成某一組隨機字串
+在fuzz ffmpeg時，可以從合法的format中選擇一個
+
+
+
