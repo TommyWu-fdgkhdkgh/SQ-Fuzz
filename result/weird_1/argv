@@ -1,0 +1,1 @@
+../fuzz_proj_binutils/binutils-gdb-afl-gcc/binutils/objcopy   -b  96  -i  182  --interleave-width=48  ./single_in_multi_sync/fuzzer02/crashes/id:000000,sig:11,src:000002,op:argv1,rep:64   ./objcopy_output

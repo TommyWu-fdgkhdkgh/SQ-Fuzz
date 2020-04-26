@@ -1,0 +1,2 @@
+argvs :  /home/tommy/fuzzLab/fuzz_proj_binutils/binutils-gdb-afl/binutils/strip-new  -I  elf64-little  -F  ihex  -R  .rela.dyn  --remove-relocations=.line  --strip-dwo  --strip-unneeded  -K  BZ"  -M  -p  -D  -x  ./single_in-test-3-9-strip-new/.cur_input  -o  ./stripoutput 
+parameters : 10111001111011001000

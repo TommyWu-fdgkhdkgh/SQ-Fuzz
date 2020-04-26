@@ -1,0 +1,85 @@
+不能用wget傳sample這個檔案
+
+真夠怪的
+屬於4-interaction的bug
+
+
+
+OS : ubuntu 18.04.3
+kernel : gnu/linux 5.0.0-32-generic
+processor : Intel(R) Core(TM) i5-8400 CPU @ 2.80GHz
+compiler : gcc 7.4.0
+
+
+Steps to Reproduce :
+download the sample from attachment
+
+objcopy -j  .debug   --debugging  --pad-to  1   ./sample
+
+
+gdb backtrace : 
+
+gdb-peda$ bt
+#0  0x000055555558d276 in copy_object (ibfd=<optimized out>, obfd=<optimized out>, input_arch=<optimized out>) at objcopy.c:3392
+#1  0x000055555558e8c9 in copy_file (input_filename=0x7fffffff2a3d "./sample", 
+    output_filename=0x7fffffff2a46 "./objcopy_output", input_target=<optimized out>, output_target=<optimized out>, 
+    input_arch=0x0) at objcopy.c:3831
+#2  0x0000555555588900 in copy_main (argv=<optimized out>, argc=<optimized out>) at objcopy.c:5890
+#3  main (argc=<optimized out>, argc@entry=0x8, argv=<optimized out>, argv@entry=0x7fffffff2708) at objcopy.c:6016
+#4  0x00007ffff7801b97 in __libc_start_main (main=0x555555586cb0 <main>, argc=0x8, argv=0x7fffffff2708, init=<optimized out>, 
+    fini=<optimized out>, rtld_fini=<optimized out>, stack_end=0x7fffffff26f8) at ../csu/libc-start.c:310
+#5  0x00005555555897aa in _start ()
+
+------
+
+gdb report
+
+[----------------------------------registers-----------------------------------]
+RAX: 0x0 
+RBX: 0x0 
+RCX: 0x0 
+RDX: 0x0 
+RSI: 0x5555558ac010 --> 0x10000000000 
+RDI: 0x0 
+RBP: 0x0 
+RSP: 0x7fffffff2330 --> 0x0 
+RIP: 0x55555558d276 (<copy_object+7702>:	mov    rbp,QWORD PTR [rax])
+R8 : 0x0 
+R9 : 0x0 
+R10: 0x0 
+R11: 0x2e ('.')
+R12: 0x0 
+R13: 0x5555558afbf0 --> 0x0 
+R14: 0x0 
+R15: 0x5555558af560 --> 0x5555558af690 ("./objcopy_output")
+EFLAGS: 0x10202 (carry parity adjust zero sign trap INTERRUPT direction overflow)
+[-------------------------------------code-------------------------------------]
+   0x55555558d26a <copy_object+7690>:	mov    r14,r9
+   0x55555558d26d <copy_object+7693>:	mov    QWORD PTR [rsp+0x8],rax
+   0x55555558d272 <copy_object+7698>:	mov    rax,QWORD PTR [rsp]
+=> 0x55555558d276 <copy_object+7702>:	mov    rbp,QWORD PTR [rax]
+   0x55555558d279 <copy_object+7705>:	test   rbp,rbp
+   0x55555558d27c <copy_object+7708>:	jne    0x55555558d2aa <copy_object+7754>
+   0x55555558d27e <copy_object+7710>:	add    QWORD PTR [rsp],0x8
+   0x55555558d283 <copy_object+7715>:	add    r14,0x8
+[------------------------------------stack-------------------------------------]
+0000| 0x7fffffff2330 --> 0x0 
+0008| 0x7fffffff2338 --> 0x10 
+0016| 0x7fffffff2340 --> 0x5555558ae400 --> 0x5555558b0780 ("./sample")
+0024| 0x7fffffff2348 --> 0x5555558a2240 --> 0x555555655f06 --> 0x492a002a444e552a ('*UND*')
+0032| 0x7fffffff2350 --> 0x5555558af560 --> 0x5555558af690 ("./objcopy_output")
+0040| 0x7fffffff2358 --> 0x5555558af8e8 --> 0x0 
+0048| 0x7fffffff2360 --> 0x5555558af970 --> 0x0 
+0056| 0x7fffffff2368 --> 0x5555558ae400 --> 0x5555558b0780 ("./sample")
+[------------------------------------------------------------------------------]
+Legend: code, data, rodata, value
+Stopped reason: SIGSEGV
+0x000055555558d276 in copy_object (ibfd=<optimized out>, obfd=<optimized out>, input_arch=<optimized out>) at objcopy.c:3392
+3392		  if (gaps[i] != 0)
+
+
+
+---
+
+
+objcopy : SIGSEGV in copy_object ( objcopy.c:3392 )

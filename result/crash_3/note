@@ -1,0 +1,1 @@
+這個bug比較特別，會把整個stack灌爆，應該算是嚴重的stack overflow

@@ -4,13 +4,21 @@
 #define _FILE_OFFSET_BITS 64
 
 #include <iostream>
-#include <cstdio>
-#include <cstdlib>
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <dlfcn.h>
+#include <execinfo.h>
+#include <string.h>
+#include<bits/stdc++.h>
+
+#include <random>
+#include <string>
+#include <cstdio>
+#include <cstdlib>
 
 #include <sys/ipc.h>
 #include <sys/mman.h>
@@ -100,12 +108,23 @@ enum {
   /* 02 */ STAGE_VAL_BE
 };
 
+/* Global variable */
+
+enum {
+  /* 00 */ INPUT_FILE_NO,
+  /* 01 */ INT_NO,
+  /* 02 */ STRING_NO,
+  /* 03 */ UNSIINT_NO
+};
+
 const char *doc_path;
 
 struct queue_entry {
 
   char* fname;                        /* File name for the test case      */
-  char** argvs;                       /* The file's argv */
+  char** argv;
+  std::vector<bool> parameters;
+
 
   u32 len;                            /* Input length                     */
 
@@ -207,7 +226,7 @@ EXP_ST u8 in_place_resume      = 0,
 	  score_changed,                            /* Scoring for favorites changed?   */
 	  auto_changed,                             /* Auto-generated tokens changed?   */
 	  kill_signal,                              /* Signal that killed the child     */
-	  resuming_fuzz,                            /* Resuming an older fuzzing job?   */
+	  resuming_fuzz = 0,                            /* Resuming an older fuzzing job?   */
 	  bitmap_changed = 1,                       /* Time to update bitmap?           */
           shuffle_queue;                            /* Shuffle input queue?             */ 
 
@@ -314,6 +333,7 @@ static void handle_stop_sig(int sig);
 static void handle_skipreq(int sig);
 static void handle_timeout(int sig);
 static void handle_resize(int sig);
+static void handle_sigsegv(int sig);
 static void check_asan_opts(void);
 static void fix_up_sync(void);
 static void save_cmdline(u32 argc, char** argv);    /* Make a copy of the current command line. */
@@ -557,11 +577,56 @@ static u8 fuzz_one(char** argv);                 /* Take the current entry from 
 						    queue, fuzz it for a while. This function 
 						    is a tad too long... returns 0 if fuzzed 
 						    successfully, 1 if skipped or bailed out. */
-static u8 argv_fuzz_one();
+
+static void argv_pivot_inputs(void);             /* Store queue_info for input test cases     */
+
+static void analyze_argvs(char **use_argv);      /* Fill all the queue_entry's argv related
+                                                    field                                     */
+static void check_argv_mutable();                /* Check if the argv is mutable              */
+
+static u8 argv_fuzz_one(char **argv);
+
+static void reset_forkserv_argvs(char **new_argvs);
+
+static u8 argv_common_fuzz_stuff(char **argv, 
+            u8 *mem, 
+            u32 len, 
+            std::vector<bool> *bool_array_ptr);
+
+static void argv_add_to_queue(char* fname, u32 len, u8 passed_det, char **argvs, std::vector<bool> *bool_array_ptr);
+
+
+static u8 argv_save_if_interesting(char **argv, 
+            void *mem, 
+	    u32 len,
+            u8 fault, 
+            std::vector<bool> *bool_array_ptr);
+
+static void random_gen_bool_array(std::vector<bool> *bool_array_ptr);
+
+static void bool_array2new_argv(char **new_argv, std::vector<bool> *bool_array_ptr);
+
+static int random_gen_INT(int min, int max);
+
+static void random_gen_STRING(u32 min, u32 max, std::string *st_ptr);
+
+static void randombytes(uint8_t *x, size_t how_much);
+
+static void record_global_variables();
+
+static char *variable_replace(char *source);
+
+static u8 argv_fuzz_flag = 0;
+static std::random_device rd;
+static std::mt19937 mt(rd());
+static char random_st[10000];
 
 static std::map<std::string, std::vector<std::string>> VARIABLES;
 static std::vector<std::vector<std::string>> PARAMETERS_MUST;
 static std::vector<std::vector<std::string>> PARAMETERS_NOT_MUST;
+static std::vector<int> PARA_MUST_IS_MUTABLE;
+static std::vector<int> PARA_NOT_MUST_IS_MUTABLE;
+static std::vector<std::string> IMPLICIT_VARIABLES;
 
 /* Destructively simplify trace by eliminating hit count information
    and replacing it with 0x80 or 0x01 depending on whether the tuple
@@ -755,11 +820,6 @@ int main(int argc, char *argv[]) {
 
   char *xml_position;
 
-  //getopt(argc, argv, "+i:")
-  //一個冒號表示後面有參數
-  //兩個冒號表示後面可以有參數，也可以沒有
-
-  //Q: 第一個"+"的意義？
   while((opt = getopt(argc, argv, "+i:o:s:f:m:t:T:dnCB:S:M:x:Q")) > 0) {
     switch(opt) {
       case 'i': /* input dir */
@@ -786,6 +846,9 @@ int main(int argc, char *argv[]) {
         } else {
           FATAL("File doesn't exist!");
         }
+	//printf("PARAMETERS_NOT_MUST.size() : %d\n", PARAMETERS_NOT_MUST.size());
+
+	argv_fuzz_flag = 1;
 
 	break;
 
@@ -984,7 +1047,6 @@ int main(int argc, char *argv[]) {
   if (getenv("AFL_LD_PRELOAD"))
     FATAL("Use AFL_PRELOAD instead of AFL_LD_PRELOAD");
 
-
   save_cmdline(argc, argv);
   //std::cout << orig_cmdline << std::endl;
 
@@ -1028,7 +1090,9 @@ int main(int argc, char *argv[]) {
   //真神奇
   load_auto();
 
+  //copy files from original dir to xxx/queue
   pivot_inputs();
+
 
   //載入字典檔
   //有分載入一整個資料夾，或是單一一個檔案
@@ -1054,10 +1118,34 @@ int main(int argc, char *argv[]) {
   else
     use_argv = argv + optind;
   
+  printf("use_argv : \n");
+
+  char **now = use_argv;
+  while(*now) {
+    printf(" %s \n", *now);
+    now++;
+  }
+
+  if (argv_fuzz_flag == 1) {
+
+    //Check which argv is mutable
+    check_argv_mutable();
+
+    //Analyze default argvs 
+    analyze_argvs(use_argv);
+ 
+    //Store queue_info   
+    argv_pivot_inputs();
+
+    //Take all the global variables
+    record_global_variables();
+
+  }
+
   //把現有的文集執行過一遍
   //  看有沒有問題
   perform_dry_run(use_argv); 
- 
+
   cull_queue();
 
   show_init_stats();
@@ -1125,18 +1213,13 @@ int main(int argc, char *argv[]) {
 
     }
 
+    // 對 argv 進行生成測試
+    skipped_fuzz = argv_fuzz_one(use_argv);
 
-    /*
-    skipped_fuzz = argv_fuzz_one();
-    
-    if (!stop_soon &&) ....
-    ...
+    // 重啟 forkserver
+    reset_forkserv_argvs(queue_cur->argv);
 
-    if (stop_soon) break;
-    
-    */
-    skipped_fuzz = argv_fuzz_one();
-
+    // 對檔案輸入進行 fuzz
     skipped_fuzz = fuzz_one(use_argv);
 
     if (!stop_soon && sync_id && !skipped_fuzz) {
@@ -1288,6 +1371,25 @@ static void handle_resize(int sig) {
   clear_screen = 1;
 }
 
+/* Handle screen segment fault (SIGSEGV). */
+
+static void handle_sigsegv(int sig) {
+  void *array[20];
+  size_t size;
+  char **strings;
+  int i;
+  size = backtrace(array, 10);
+  strings = backtrace_symbols(array, size);
+  printf("SIGNAL ocurre %d, stack tarce:\n", sig);
+  printf("obtained %d stack frames.\n", size);
+
+  for (i = 0; i < size; i++)
+    printf("%s\n", strings);
+
+  free(strings);
+  printf("stack trace over!\n");
+  FATAL("GG\n"); 
+}
 
 /* Set up signal handlers. More complicated that needs to be, because libc on
    Solaris doesn't resume interrupted reads(), sets SA_RESETHAND when you call
@@ -1330,6 +1432,10 @@ EXP_ST void setup_signal_handlers(void) {
   sa.sa_handler = SIG_IGN;
   sigaction(SIGTSTP, &sa, NULL);
   sigaction(SIGPIPE, &sa, NULL);
+
+  /* debug for SIGSEGV */
+  sa.sa_handler = handle_sigsegv;
+  sigaction(SIGSEGV, &sa, NULL);
 
 }
 
@@ -1970,6 +2076,18 @@ EXP_ST void setup_dirs_fds(void) {
   if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
   ck_free(tmp);
 
+  tmp = alloc_printf("%s/queue_info/crashes", out_dir);
+  if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
+  ck_free(tmp);
+
+  tmp = alloc_printf("%s/queue_info/hangs", out_dir);
+  if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
+  ck_free(tmp);
+
+  tmp = alloc_printf("%s/queue_info/queue", out_dir);
+  if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
+  ck_free(tmp);
+
   /* Generally useful file descriptors. */
 
   dev_null_fd = open("/dev/null", O_RDWR);
@@ -2124,6 +2242,23 @@ static void maybe_delete_out_dir(void) {
   if (delete_files(fn, (char *)CASE_PREFIX)) goto dir_cleanup_failed;
   ck_free(fn);
 
+  /* delete queue_into directory */
+  fn = alloc_printf("%s/queue_info/queue", out_dir);
+  if (rmdir(fn) && errno != ENOENT) goto dir_cleanup_failed;
+  ck_free(fn);
+
+  fn = alloc_printf("%s/queue_info/crashes", out_dir);
+  if (rmdir(fn) && errno != ENOENT) goto dir_cleanup_failed;
+  ck_free(fn);
+
+  fn = alloc_printf("%s/queue_info/hangs", out_dir);
+  if (rmdir(fn) && errno != ENOENT) goto dir_cleanup_failed;
+  ck_free(fn);
+
+  fn = alloc_printf("%s/queue_info", out_dir);
+  if (rmdir(fn) && errno != ENOENT) goto dir_cleanup_failed;
+  ck_free(fn);
+ 
   /* All right, let's do <out_dir>/crashes/id:* and <out_dir>/hangs/id:*. */
 
   if (!in_place_resume) {
@@ -2447,6 +2582,12 @@ static void add_to_queue(char* fname, u32 len, u8 passed_det) {
   q->len          = len;
   q->depth        = cur_depth + 1;
   q->passed_det   = passed_det;
+
+
+  if (argv_fuzz_flag == 1 && queue_cur != NULL) {
+    q->argv = queue_cur->argv;
+    q->parameters = queue_cur->parameters;
+  }
 
   if (q->depth > max_depth) max_depth = q->depth;
 
@@ -3890,7 +4031,7 @@ EXP_ST void init_forkserver(char** argv) {
   int status;
   s32 rlen;
 
-  ACTF("Spinning up the fork server...");
+  //ACTF("Spinning up the fork server...");
 
   if (pipe(st_pipe) || pipe(ctl_pipe)) PFATAL("pipe() failed");
 
@@ -4031,7 +4172,7 @@ EXP_ST void init_forkserver(char** argv) {
      Otherwise, try to figure out what went wrong. */
 
   if (rlen == 4) {
-    OKF("All right - fork server is up.");
+    //OKF("All right - fork server is up.");
     return;
   }
 
@@ -4412,7 +4553,7 @@ static void show_stats(void) {
 
   SAYF(bV bSTOP "  now processing : " cRST "%-17s " bSTG bV bSTOP, tmp);
 
-  sprintf((char *)tmp, "%0.02f%% / %0.02f%%", ((double)queue_cur->bitmap_size) *
+  sprintf((char *)tmp, "%0.06f%% / %0.06f%%", ((double)queue_cur->bitmap_size) *
           100 / MAP_SIZE, t_byte_ratio);
 
   SAYF("    map density : %s%-21s " bSTG bV "\n", t_byte_ratio > 70 ? cLRD :
@@ -5291,7 +5432,7 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps) {
      execs_per_sec */
 
   fprintf(plot_file, 
-          "%llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f\n",
+          "%llu, %llu, %u, %u, %u, %u, %0.06f%%, %llu, %llu, %u, %0.02f\n",
           get_cur_time() / 1000, queue_cycle - 1, current_entry, queued_paths,
           pending_not_fuzzed, pending_favored, bitmap_cvg, unique_crashes,
           unique_hangs, max_depth, eps); /* ignore errors */
@@ -5366,6 +5507,14 @@ static u8* DTD(u64 cur_ms, u64 event_ms) {
   t_s = (delta / 1000) % 60;
 
   sprintf((char *)tmp, "%s days, %u hrs, %u min, %u sec", DI(t_d), t_h, t_m, t_s);
+
+  //想要在某個小時停下來，可以在這邊插一個if
+  /*
+  if (t_h == 12) {
+    FATAL("Times up!\n");
+  }
+  */
+
   return tmp;
 
 }
@@ -5836,6 +5985,8 @@ static void sync_fuzzers(char** argv) {
       }
 
       if (fstat(fd, &st)) PFATAL("fstat() failed");
+
+      //可以在這邊塞程式碼，拿到argv
 
       /* Ignore zero-sized or oversized files. */
 
@@ -6460,7 +6611,7 @@ static u8* describe_op(u8 hnb) {
 
 #endif /* !SIMPLE_FILES */
 
-
+;
 /* Write a message accompanying the crash directory :-) */
 
 static void write_crash_readme(void) {
@@ -6507,11 +6658,979 @@ static void write_crash_readme(void) {
 
 }
 
+// 用不同的 argv 去重啟 forkserver
+static void reset_forkserv_argvs(char **new_argvs) {
 
-static u8 argv_fuzz_one() {
-  printf("argv_fuzz_one()\n");
+  if (forksrv_pid > 0) {
+    kill(forksrv_pid, SIGKILL);
+    if (waitpid(forksrv_pid, NULL, 0) <= 0) {
+      WARNF("error waitpid\n");
+    }
+    forksrv_pid = 0;
+    //printf("fuzzone kill forksrv\n");
+  }
+
+  if (child_pid > 0) {
+    kill(child_pid, SIGKILL);
+    child_pid = 0;
+    //printf("fuzzone kill child\n");
+  }
+
+  if (dumb_mode != 1 && !no_forkserver && !forksrv_pid) {
+    close(fsrv_ctl_fd);
+    close(fsrv_st_fd);
+
+    init_forkserver(new_argvs);
+
+  }
+
+}
+
+//新的字串放在source
+//bool回傳有沒有找到-->因為外層會是一個迴圈
+static char* variable_replace(char *source) {
+
+  int source_len = strlen(source);  
+  int origi_len = source_len;
+  int find_len;
+  int rep_len;
+  int gap;
+  char *target = NULL;
+  
+  //VARIABLES
+  std::map<std::string, std::vector<std::string>>::iterator iter;
+  for (iter = VARIABLES.begin();iter != VARIABLES.end();iter++) {
+    target = strstr(source, iter->first.c_str());
+
+    if(target != NULL) {
+      break;
+    }
+        
+  }
+  
+  if (iter != VARIABLES.end()) {
+    int random_index = UR(iter->second.size()); 
+    //printf("find EXPLICIT VARIABLES!!!!\n");
+  
+    char *ori_str = (char*)ck_alloc(sizeof(char) * source_len + 1); 
+    strcpy(ori_str, source);
+
+    gap = target - source;
+    rep_len = iter->second[random_index].size(); 
+    find_len = iter->first.size();
+
+    source_len += (rep_len - find_len);
+
+    //printf("before free\n");
+    //printf("source : %s\n", source);
+    ck_free(source);
+    //printf("after free\n");
+    source = (char*)ck_alloc(source_len * sizeof(char) + 1);
+    memset(source, 0, sizeof(char) * source_len);
+
+    strncpy(source, ori_str, source_len > origi_len ? origi_len : source_len);
+
+    source[gap] = '\0';   
+
+    strcat(source, iter->second[random_index].c_str());
+
+    strcat(source, ori_str+(gap+find_len));
+
+    //printf("before free3\n");
+    //printf("source3 : %s\n", source);
+    ck_free(ori_str);
+    //printf("after free3\n");
+
+    //printf("source : 0x%x\n", source); 
+
+    return source;  
+  }
+  
+  //IMPLICIT_VARIABLES
+  int i;
+  for (i = 0;i < IMPLICIT_VARIABLES.size();i++) {
+    target = strstr(source, IMPLICIT_VARIABLES[i].c_str());
+
+    if (target != NULL) {
+      break;
+    } 
+  } 
+
+  if(target != NULL) {
+    
+    u32 ran;
+    char *ori_str = (char*)ck_alloc(sizeof(char) * source_len + 1);
+    strcpy(ori_str, source);
+    //ori_str[source_len] = '\0';
+
+    gap = target - source;
+  
+    //std::string rep_st;
+    char rep_st[100];
+    memset(rep_st, 0, 100);
+    switch (i) {
+      case INPUT_FILE_NO:
+        //rep_st = std::string(out_file);
+        strcpy(rep_st, out_file); 
+        rep_len = strlen(rep_st);
+        break;
+      case INT_NO:
+	ran = UR(100);
+        if (ran < 4){
+          //rep_st = std::to_string(-1);
+          //rep_st = std::to_string(INT_MIN); 會crash
+	  //itoa(INT_MIN, rep_st, 10);
+	  //sprintf(rep_st, "%d", -1000);
+	  sprintf(rep_st, "%d", -1);
+        } else if (ran < 8) {
+          //rep_st = std::to_string(INT_MAX);
+          //rep_st = std::to_string(100000);
+          //itoa(INT_MAX, rep_st, 10);
+	  //sprintf(rep_st, "%d", 1000);
+	  sprintf(rep_st, "%d", 0);
+	} else {
+	  //rep_st = std::to_string(random_gen_INT(-0xff, 0xff));
+	  //rep_st = std::to_string(12);
+	  //itoa(random_gen_INT(-0xff, 0xff), rep_st, 10);
+	  //sprintf(rep_st, "%d", random_gen_INT(-0xff, 0xff));
+	  sprintf(rep_st, "%d", random_gen_INT(-10, 10));
+	}
+	//std::cout << rep_st << std::endl;
+	//rep_st = std::string("1122");
+	//rep_len = rep_st.size();
+	rep_len = strlen(rep_st);
+        break;
+      case STRING_NO:
+	//random_gen_STRING(3, 10, &rep_st);
+	//std::cout << "random gen string" << std::endl;
+        ran = UR(10)+1;
+	//randombytes((uint8_t *)rep_st, ran);
+	
+	for (int i = 0;i < ran;i++) {
+          rep_st[i] = (char)(UR(95) + 32);
+	}
+	
+	rep_st[ran] = 0;
+	//random_st[ran] = 0;
+        //printf("random_st : %s\n", random_st);
+	//rep_st = std::string(ran, '1');
+	//sprintf(rep_st, "%s", "gginin");
+	//printf("rep_st : %s\n", rep_st);
+	rep_len = strlen(rep_st);
+        break;
+      case UNSIINT_NO:
+	//rep_st = std::to_string(UR(4294967295));
+        sprintf(rep_st, "%u", UR(256));
+	//rep_len = rep_st.size();
+	rep_len = strlen(rep_st);
+        break;
+      default:
+	FATAL("The number doesn't exist!");
+    }
+
+    find_len = IMPLICIT_VARIABLES[i].size();
+
+    source_len += (rep_len - find_len);
+
+    //printf("before free2\n");
+    //printf("source2 : %s\n", source);
+    ck_free(source);
+    //printf("after free2\n");
+    source = (char *)ck_alloc(source_len * sizeof(char) + 1);
+    memset(source, 0, sizeof(char) * source_len);
+
+    //strcpy(source, ori_str);
+    strncpy(source, ori_str, source_len > origi_len ? origi_len : source_len);
+
+    source[gap] = '\0';
+
+    //strcat(source, rep_st.c_str());
+    strcat(source, rep_st);
+
+    if ((gap+find_len) < origi_len) { 
+      strcat(source, ori_str+(gap+find_len));
+    }
+    ck_free(ori_str);
+   
+    return source;
+  }
+  
+  return NULL;
+}
+
+static void argv_add_to_queue(char* fname,
+              u32 len, 
+	      u8 passed_det, 
+              char **argv,
+	      std::vector<bool> *bool_array_ptr) {
+
+  struct queue_entry* q = (struct queue_entry*)ck_alloc(sizeof(struct queue_entry));
+
+  q->fname        = fname;
+  q->len          = len;
+  q->depth        = cur_depth + 1;
+  q->passed_det   = passed_det;
+  q->argv        = argv;
+  q->parameters   = *bool_array_ptr;
+
+  if (q->depth > max_depth) max_depth = q->depth;
+
+  if (queue_top) {
+
+    queue_top->next = q;
+    queue_top = q;
+
+  } else q_prev100 = queue = queue_top = q;
+
+  queued_paths++;
+  pending_not_fuzzed++;
+
+  cycles_wo_finds = 0;
+
+  if (!(queued_paths % 100)) {
+
+    q_prev100->next_100 = q;
+    q_prev100 = q;
+
+  }
+
+  last_path_time = get_cur_time();
+
+}
+
+static u8 argv_save_if_interesting(char **argv,
+            void *mem,
+	    u32 len,
+            u8 fault,
+            std::vector<bool> *bool_array_ptr) {
+
+  char *fn ="";
+  u8 hnb;  
+  s32 fd;
+  u8 keeping = 0, res;
+  
+  char  *qn = "";
+  s32 qinfo_fd;
+
+  if (fault == crash_mode) {
+
+    /* Keep only if there are new bits in the map, add to queue for
+       future fuzzing, etc. */
+
+    if (!(hnb = has_new_bits(virgin_bits))) {
+      if (crash_mode) total_crashes++;
+      return 0;
+    }
+
+#ifndef SIMPLE_FILES
+
+    fn = alloc_printf("%s/queue/id:%06u,%s", out_dir, queued_paths,
+                      describe_op(hnb));
+#else
+
+    fn = alloc_printf("%s/queue/id_%06u", out_dir, queued_paths);
+
+#endif /* ^!SIMPLE_FILES */
+
+    if (argv_fuzz_flag == 1) {
+
+#ifndef SIMPLE_FILES
+
+      qn = alloc_printf("%s/queue_info/queue/id:%06u,%s", out_dir, queued_paths,
+                      describe_op(hnb));
+#else 
+
+      qn = alloc_printf("%s/queue_info/queue/id_%06u", out_dir, queued_paths);
+
+#endif /* ^!SIMPLE_FILES */ 
+
+    }
+
+    //add_to_queue(fn, len, 0);
+    argv_add_to_queue(fn, len, 0, argv, bool_array_ptr);
+
+    if (hnb == 2) {
+      queue_top->has_new_cov = 1;
+      queued_with_cov++;
+    }
+
+    queue_top->exec_cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
+
+    /* Try to calibrate inline; this also calls update_bitmap_score() when
+       successful. */
+
+    res = calibrate_case(argv, queue_top, (char *)mem, queue_cycle - 1, 0);
+
+    if (res == FAULT_ERROR)
+      FATAL("Unable to execute target application");
+
+    fd = open(fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (fd < 0) PFATAL("Unable to create '%s'", fn);
+    ck_write(fd, mem, len, fn);
+    close(fd);
+    keeping = 1;
+
+    if (argv_fuzz_flag == 1) {
+      FILE *outfp;
+      outfp = fopen(qn, "w");
+      fprintf(outfp, "argvs : ");
+      char **now = argv;
+      while(*now) {
+        fprintf(outfp, " %s ", *now);
+	now++;
+      }
+      fprintf(outfp, "\n");
+
+      std::string bool2st;
+      for (int i = 0;i < (*bool_array_ptr).size();i++) {
+        if ((*bool_array_ptr)[i] == true) {
+          bool2st+="1";
+        } else {
+          bool2st+="0";
+        }
+      }
+
+      fprintf(outfp, "parameters : %s\n", bool2st.c_str());
+      fclose(outfp);
+      ck_free(qn);
+    }
+
+  }
+
+  switch (fault) {
+
+    case FAULT_TMOUT:
+
+      /* Timeouts are not very interesting, but we're still obliged to keep
+         a handful of samples. We use the presence of new bits in the
+         hang-specific bitmap as a signal of uniqueness. In "dumb" mode, we
+         just keep everything. */
+
+      total_tmouts++;
+
+      if (unique_hangs >= KEEP_UNIQUE_HANG) return keeping;
+
+      if (!dumb_mode) {
+
+#ifdef WORD_SIZE_64
+        simplify_trace((u64*)trace_bits);
+#else
+        simplify_trace((u32*)trace_bits);
+#endif /* ^WORD_SIZE_64 */
+
+        if (!has_new_bits(virgin_tmout)) return keeping;
+
+      }
+
+      unique_tmouts++;
+
+      /* Before saving, we make sure that it's a genuine hang by re-running
+         the target with a more generous timeout (unless the default timeout
+         is already generous). */
+
+      if (exec_tmout < hang_tmout) {
+
+        u8 new_fault;
+        write_to_testcase(mem, len);
+        new_fault = run_target(argv, hang_tmout);
+
+        /* A corner case that one user reported bumping into: increasing the
+           timeout actually uncovers a crash. Make sure we don't discard it if
+           so. */
+
+        if (!stop_soon && new_fault == FAULT_CRASH) goto keep_as_crash;
+
+        if (stop_soon || new_fault != FAULT_TMOUT) return keeping;
+
+      }
+
+#ifndef SIMPLE_FILES
+
+      fn = alloc_printf("%s/hangs/id:%06llu,%s", out_dir,
+                        unique_hangs, describe_op(0));
+
+#else
+
+      fn = alloc_printf("%s/hangs/id_%06llu", out_dir,
+                        unique_hangs);
+
+#endif /* ^!SIMPLE_FILES */
+
+
+
+      if (argv_fuzz_flag == 1) {
+
+#ifndef SIMPLE_FILES
+
+        qn = alloc_printf("%s/queue_info/hangs/id:%06u,%s", out_dir, unique_hangs,
+                        describe_op(hnb));
+#else 
+
+        qn = alloc_printf("%s/queue_info/hangs/id_%06u", out_dir, unique_hangs);
+
+#endif /* ^!SIMPLE_FILES */ 
+
+      }
+
+      unique_hangs++;
+
+      last_hang_time = get_cur_time();
+
+      break;
+
+    case FAULT_CRASH:
+
+keep_as_crash:
+
+      /* This is handled in a manner roughly similar to timeouts,
+         except for slightly different limits and no need to re-run test
+         cases. */
+
+      total_crashes++;
+
+      if (unique_crashes >= KEEP_UNIQUE_CRASH) return keeping;
+
+      if (!dumb_mode) {
+
+#ifdef WORD_SIZE_64
+        simplify_trace((u64*)trace_bits);
+#else
+        simplify_trace((u32*)trace_bits);
+#endif /* ^WORD_SIZE_64 */
+
+        if (!has_new_bits(virgin_crash)) return keeping;
+
+      }
+
+      if (!unique_crashes) write_crash_readme();
+
+#ifndef SIMPLE_FILES
+
+      fn = alloc_printf("%s/crashes/id:%06llu,sig:%02u,%s", out_dir,
+                        unique_crashes, kill_signal, describe_op(0));
+
+#else
+
+      fn = alloc_printf("%s/crashes/id_%06llu_%02u", out_dir, unique_crashes,
+                        kill_signal);
+
+#endif /* ^!SIMPLE_FILES */
+
+      if (argv_fuzz_flag == 1) {
+
+#ifndef SIMPLE_FILES
+
+        qn = alloc_printf("%s/queue_info/crashes/id:%06u,%s", out_dir, unique_crashes,
+                        describe_op(hnb));
+#else 
+
+        qn = alloc_printf("%s/queue_info/crashes/id_%06u", out_dir, unique_crashes);
+
+#endif /* ^!SIMPLE_FILES */ 
+
+      }
+
+
+      unique_crashes++;
+
+      last_crash_time = get_cur_time();
+      last_crash_execs = total_execs;
+
+      break;
+
+    case FAULT_ERROR: FATAL("Unable to execute target application");
+
+    default: return keeping;
+
+  }
+
+  /* If we're here, we apparently want to save the crash or hang
+     test case, too. */
+
+  fd = open(fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+  if (fd < 0) PFATAL("Unable to create '%s'", fn);
+  ck_write(fd, mem, len, fn);
+  close(fd);
+
+  ck_free(fn);
+
+
+  if (argv_fuzz_flag == 1) {
+    FILE *outfp;
+    outfp = fopen(qn, "w");
+    fprintf(outfp, "argvs : ");
+    char **now = argv;
+    while(*now) {
+      fprintf(outfp, " %s ", *now);
+        now++;
+    }
+    fprintf(outfp, "\n");
+
+    std::string bool2st;
+    for (int i = 0;i < (*bool_array_ptr).size();i++) {
+      if ((*bool_array_ptr)[i] == true) {
+        bool2st+="1";
+      } else {
+        bool2st+="0";
+      }
+    }
+
+    fprintf(outfp, "parameters : %s\n", bool2st.c_str());
+    fclose(outfp);
+    ck_free(qn);
+  }
+
+
+  return keeping;
+
+}	
+
+static u8 argv_common_fuzz_stuff(char **argvs, u8 *mem, u32 len, std::vector<bool> *bool_array_ptr) {
+
+  u8 fault;
+
+  //post_handler???
+  
+  //wrute_to_testcase 在argv_fuzz_one就已經寫入了
+  
+  //restart forkserv
+  reset_forkserv_argvs(argvs);
+
+  fault = run_target(argvs, exec_tmout);
+
+  if (stop_soon) return 1;
+
+  if (fault == FAULT_TMOUT) {
+
+    /*if (subseq_tmouts++ > TMOUT_LIMIT) {
+      cur_skipped_paths++;
+      return 1;
+    }*/
+
+  } else subseq_tmouts = 0;
+
+  /*
+    if (skip_requested) {
+       skip_requested = 0;
+       cur_skipped_paths++;
+       return 1;
+    }
+  */   
+
+  queued_discovered += argv_save_if_interesting(argvs, mem, len, fault, bool_array_ptr);
+
+  if (!(stage_cur % stats_update_freq) || stage_cur + 1 == stage_max)
+    show_stats();
 
   return 0;
+
+
+}
+
+static void record_global_variables() {
+
+  IMPLICIT_VARIABLES.push_back("\\[INPUT_FILE\\]");
+  IMPLICIT_VARIABLES.push_back("\\[INT\\]");
+  IMPLICIT_VARIABLES.push_back("\\[STRING\\]");
+  IMPLICIT_VARIABLES.push_back("\\[UNSIINT\\]");
+
+}
+
+static void check_argv_mutable() {
+ 
+   ACTF("Check argv is mutable....");
+  
+   //改成元素是index
+   PARA_MUST_IS_MUTABLE = std::vector<int>(PARAMETERS_MUST.size(), -1);
+   PARA_NOT_MUST_IS_MUTABLE = std::vector<int>(PARAMETERS_NOT_MUST.size(), -1);
+
+   /* PARA_MUST_IS_MUTABLE, INPUT_FILE 是特例，就算有\[以及\]也是不能mutate的！ */
+   for (int i = 0;i < PARAMETERS_MUST.size();i++) {
+     for (int j = 0;j < PARAMETERS_MUST[i].size();j++) {
+       //std::cout << "PARAMETERS_MUST[i][j] : " << PARAMETERS_MUST[i][j] << std::endl;
+       //std::cout << "PARAMETERS_MUST[i][j].find(\"...\") : " << PARAMETERS_MUST[i][j].find("\\[") << std::endl;
+       if (PARAMETERS_MUST[i][j].find("\\[") != std::string::npos && PARAMETERS_MUST[i][j].find("\\]") != std::string::npos && PARAMETERS_MUST[i][j].find("INPUT_FILE") == std::string::npos) {
+         PARA_MUST_IS_MUTABLE[i] = true;
+	 break;
+       } 
+     }
+   }
+
+   for (int i = 0;i < PARAMETERS_NOT_MUST.size();i++) {
+     for (int j = 0;j < PARAMETERS_NOT_MUST[i].size();j++) {
+       //std::cout << "PARAMETERS_NOT_MUST[i][j] : " << PARAMETERS_NOT_MUST[i][j] << std::endl;
+       if (PARAMETERS_NOT_MUST[i][j].find("\\[") != std::string::npos && PARAMETERS_NOT_MUST[i][j].find("\\]") != std::string::npos) {
+	 //std::cout << "PARAMETERS_NOT_MUST[i][j].find(\"...\") : " << PARAMETERS_NOT_MUST[i][j].find("\\[") << std::endl;
+         PARA_NOT_MUST_IS_MUTABLE[i] = true;
+	 //printf("WOW!!\n");
+	 break;
+       } 
+     }
+   }
+
+   OKF("Finish checking!");
+
+}
+
+static void analyze_argvs(char **use_argv) {
+
+  ACTF("analyze default argvs.....");	
+ 
+  char **now = use_argv;
+  //std::string argvs_st;
+  std::vector<bool> bool_array(PARAMETERS_NOT_MUST.size(), false);
+
+  /*while (*now) {
+    //printf(" %s \n", *now);
+    std::string nowst(*now);
+
+    for(int i = 0;i < PARAMETERS_NOT_MUST.size();i++) {
+      //std::cout << "PARAMETERS_NOT_MUST[i][0] : " << PARAMETERS_NOT_MUST[i][0] << std::endl;
+      if(nowst == PARAMETERS_NOT_MUST[i][0]) {
+        //printf("find it !!\n");
+	bool_array[i] = true;
+      }
+    }
+
+    //argvs_st = argvs_st + nowst + " ";
+
+    now++; 
+  }	  
+  */
+  struct queue_entry* q = queue;
+
+  //std::cout << "argvs_st : " << argvs_st << std::endl; 
+
+  while(q) {
+
+    q->parameters = bool_array;
+    q->argv = use_argv; 
+
+    q = q->next;
+  }
+
+
+  OKF("finish analyzing default argvs!");
+}
+
+static void argv_pivot_inputs(void) {
+  struct queue_entry *q = queue;
+  u32 id = 0;
+
+  ACTF("Store queue_info for all input files");
+
+  while (q) {
+
+
+    char  *nfn, *rsl = strrchr(q->fname, '/');
+    u32 orig_id;
+
+    if (!rsl) rsl = q->fname; else rsl++;
+
+    /* If the original file name conforms to the syntax and the recorded
+       ID matches the one we'd assign, just use the original file name.
+       This is valuable for resuming fuzzing runs. */
+
+#ifndef SIMPLE_FILES
+#  define CASE_PREFIX "id:"
+#else
+#  define CASE_PREFIX "id_"
+#endif /* ^!SIMPLE_FILES */
+
+    if (!strncmp(rsl, CASE_PREFIX, 3) &&
+        sscanf(rsl + 3, "%06u", &orig_id) == 1 && orig_id == id) {
+
+      char* src_str;
+      u32 src_id;
+
+      nfn = alloc_printf("%s/queue_info/queue/%s", out_dir, rsl);
+
+      /* Since we're at it, let's also try to find parent and figure out the
+         appropriate depth for this entry. */
+
+      src_str = strchr(rsl + 3, ':');
+
+      if (src_str && sscanf(src_str + 1, "%06u", &src_id) == 1) {
+
+        struct queue_entry* s = queue;
+        while (src_id-- && s) s = s->next;
+        if (s) q->depth = s->depth + 1;
+
+        if (max_depth < q->depth) max_depth = q->depth;
+
+      }
+
+    } else {
+
+      /* No dice - invent a new name, capturing the original one as a
+         substring. */
+
+#ifndef SIMPLE_FILES
+
+      char* use_name = strstr(rsl, ",orig:");
+
+      if (use_name) use_name += 6; else use_name = rsl;
+      nfn = alloc_printf("%s/queue_info/queue/id:%06u,orig:%s", out_dir, id, use_name);
+
+#else
+
+      nfn = alloc_printf("%s/queue_info/queue/id_%06u", out_dir, id);
+
+#endif /* ^!SIMPLE_FILES */
+
+    }
+
+    /* Pivot to the new queue_info entry. */
+
+    //link_or_copy(q->fname, nfn);
+    //nfn是新的檔案的名稱
+    FILE *outfp;
+    outfp = fopen(nfn, "w");
+    fprintf(outfp, "argv : ");
+    char **now = q->argv;
+    while(*now) {
+      fprintf(outfp, " %s ", *now);
+
+      now++;
+    }
+    fprintf(outfp, "\n");
+
+    std::string bool2st;
+    for (int i = 0;i < q->parameters.size();i++) {
+      if (q->parameters[i] == true) {
+        bool2st+="1";
+      } else {
+        bool2st+="0";
+      } 
+    }
+
+    fprintf(outfp, "parameters : %s\n", bool2st.c_str());
+    fclose(outfp);
+
+    ck_free(nfn);
+
+    q = q->next;
+    id++;
+  }
+
+  OKF("Finish storing queue_info");
+
+}
+
+static void random_gen_bool_array(std::vector<bool> *bool_array_ptr) {
+
+  for (int i = 0;i < (*bool_array_ptr).size();i++) {
+    (*bool_array_ptr)[i] = (UR(2) == 0 ? false : true);
+  }
+
+}
+
+static int random_gen_INT(int min, int max) {
+  std::uniform_int_distribution<int> dist(min, max);
+  return dist(mt);
+}
+
+/* shameless stolen from ebacs */
+static void randombytes(uint8_t *x, size_t how_much)
+{
+    ssize_t i;
+    static int fd = -1;
+
+    ssize_t xlen = (ssize_t) how_much;
+    assert(xlen >= 0);
+    if (fd == -1) {
+        for (;;) {
+            fd = open("/dev/urandom", O_RDONLY);
+            if (fd != -1)
+                break;
+            sleep(1);
+        }
+    }
+
+    while (xlen > 0) {
+        if (xlen < 1048576)
+            i = xlen;
+        else
+            i = 1048576;
+
+        i = read(fd, x, (size_t) i);
+        if (i < 1) {
+            sleep(1);
+            continue;
+        }
+
+        x += i;
+        xlen -= i;
+    }
+}
+
+
+static void random_gen_STRING(u32 min, u32 max, std::string *st_ptr) {
+  assert(max >= min && min >= 0);
+  u32 len = UR(max-min+1)+min; 
+
+  //char *st = (char *)ck_alloc(sizeof(char) * len);
+  randombytes((uint8_t *)random_st, len);
+  //st[len-1] = 0;
+  //random_st[len] = 0;
+
+  st_ptr->clear();
+
+  /*for(int i = 0;i < len;i++){
+    (*st_ptr)+=random_st[i];
+  }*/
+  (*st_ptr) = std::string("gginin");
+
+}
+
+static void bool_array2new_argv(char *new_argv[], std::vector<bool> *bool_array_ptr) {
+   
+  int argv_index = 0;
+
+  //asprintf(&(new_argv[argv_index]), "%s", queue_cur->argv[0]);
+  new_argv[argv_index] = (char *)ck_alloc(sizeof(char) * strlen(queue_cur->argv[0]) + 1);
+  sprintf(new_argv[argv_index], "%s", queue_cur->argv[0]);
+
+  argv_index++;
+
+  //printf("bool_array2new_argv : ");
+  for (int i = 0 ;i < (*bool_array_ptr).size();i++) {
+    if ((*bool_array_ptr)[i] == true) {
+      for (int j = 0;j <PARAMETERS_NOT_MUST[i].size();j++) {
+        new_argv[argv_index] = (char *)ck_alloc(sizeof(char) * strlen(PARAMETERS_NOT_MUST[i][j].c_str()) + 1);
+        sprintf(new_argv[argv_index], "%s", PARAMETERS_NOT_MUST[i][j].c_str());
+        argv_index++;	
+      }
+    }
+  }
+
+  for (int i = 0;i < PARAMETERS_MUST.size();i++) {
+    for (int j = 0;j < PARAMETERS_MUST[i].size();j++) {
+      new_argv[argv_index] = (char *)ck_alloc(sizeof(char) * strlen(PARAMETERS_MUST[i][j].c_str()) + 1);
+      sprintf(new_argv[argv_index], "%s", PARAMETERS_MUST[i][j].c_str());
+      argv_index++;
+    } 
+  }
+
+  new_argv[argv_index] = 0;
+
+  //printf("out_file : %s\n", out_file);
+  //printf("bool_array2new_argv : ");
+  char **now = new_argv;
+  while(*now != 0) {
+
+    //偵測now裡面有沒有\[變數名稱\]
+    while (1) {
+      char *temp = variable_replace(*now);
+      if(temp == NULL) {
+        break;
+      } else {
+        *now = temp;
+      }
+    }
+
+    //printf("bool2array : %s\n", *now);
+    //printf("now : 0x%x\n", *now); 
+
+    //printf("now++\n");
+    now++;
+    //printf("after now++\n");
+    //printf("*next now :%s\n", *now);
+    //printf("after next now++\n");
+
+  }
+  //printf("\n\n");
+
+}
+
+static u8 argv_fuzz_one(char **argv) {
+
+  s32 len, fd, temp_len, i, j;  
+  u8  *in_buf, *orig_in;
+
+  u8  ret_val = 1, doing_det = 0;
+
+  /* Map the test case into memory. */
+  fd = open(queue_cur->fname, O_RDONLY);
+
+  if (fd < 0) PFATAL("Unable to open '%s'", queue_cur->fname);
+  len = queue_cur->len;
+  orig_in = in_buf = (u8 *)mmap(0, len, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+
+  if (orig_in == MAP_FAILED) PFATAL("Unable to mmap '%s'", queue_cur->fname);
+  close(fd);
+
+  //因為變動的是argv，所以只需要在一開始將檔案寫入一次就好
+  //  原本會每次的common_fuzz_stuff都會寫入一次
+  write_to_testcase(in_buf, len);
+
+  //先跳過原本的 CALIBRATION, TRIMMING, PERFORMANCE SCORE
+  /*********************************************
+   * SIMPLE ARGV MUTATING                      *
+   *********************************************/
+
+  stage_name  = "argv_fuzz";  //此階段的名稱
+  stage_short = "argv1";  //此階段的簡稱
+  //stage_max   = 1000;   //此階段最多執行多少次 
+  stage_max   = 100;   //此階段最多執行多少次 
+  //stage_max   = 10000;   //此階段最多執行多少次 
+
+  std::vector<bool> temp_bool_array(PARAMETERS_NOT_MUST.size(), false);
+  char **new_argv;
+
+  for(stage_cur = 0; stage_cur < stage_max; stage_cur++) {
+
+    new_argv = (char **)ck_alloc(sizeof(char *) * 200);
+    memset(new_argv, 0, sizeof(char *) * 200);
+
+    //0. 存現有的path數量
+    //1. random pick flags，並且轉換成bool陣列(parameters)，要新增一個結構才行！
+    //2. 轉成argv（填滿變數）（要用malloc給新的記憶體區塊）
+    //3. argv_common_fuzz_stuff(...)
+    //4. 查看path數量有沒有變多，沒有的話要記得把argv給free掉(就沒有queue指向那個結構)
+    u32 original_queued_paths = queued_paths; 
+
+    random_gen_bool_array(&temp_bool_array);
+
+    /*printf("temp_bool_array : ");
+    for (int i = 0;i < temp_bool_array.size();i++) {
+      if (temp_bool_array[i] == true) {
+        printf("1");
+      } else {
+        printf("0");
+      }
+    }
+    printf("\n");
+    FATAL("Stop!\n");*/
+
+    bool_array2new_argv(new_argv, &temp_bool_array);
+
+
+    //if (argv_common_fuzz_stuff(argv, in_buf, len, &(queue_cur->parameters))) goto argv_fuzz_one_abandon_entry;
+    if (argv_common_fuzz_stuff(new_argv, in_buf, len, &temp_bool_array)) goto argv_fuzz_one_abandon_entry;
+
+    if (original_queued_paths == queued_paths) {
+      //假如沒有產生新的路徑，就free掉argv
+      char **now = new_argv;
+      while(*now) {
+        ck_free(*now);
+        //*now = 0;
+	now++;
+      }
+      ck_free(new_argv);
+    }
+
+  }
+
+  //在離開這個function前，要把argv回復原狀 
+  //reset_forkserv_argvs(argv);
+
+argv_fuzz_one_abandon_entry:
+  munmap(orig_in, queue_cur->len);
+
+  if (in_buf != orig_in) ck_free(in_buf);
+
+  return ret_val;
 }
 
 //-------------------
@@ -6661,15 +7780,23 @@ static u8 fuzz_one(char** argv) {
   /* Skip right away if -d is given, if we have done deterministic fuzzing on
      this entry ourselves (was_fuzzed), or if it has gone through deterministic
      testing in earlier, resumed runs (passed_det). */
-
-  if (skip_deterministic || queue_cur->was_fuzzed || queue_cur->passed_det)
+  // slave 的fuzzer會走這條路徑
+  if (skip_deterministic || queue_cur->was_fuzzed || queue_cur->passed_det) {
+    /*for (int i = 0;i < 100;i++) {
+      printf("skip1\n");
+    }*/
     goto havoc_stage;
+  }
 
   /* Skip deterministic fuzzing if exec path checksum puts this out of scope
      for this master instance. */
 
-  if (master_max && (queue_cur->exec_cksum % master_max) != master_id - 1)
+  if (master_max && (queue_cur->exec_cksum % master_max) != master_id - 1) {
+    /*for(int i = 0;i < 100;i++) {
+      printf("skip2\n"); 
+    }*/
     goto havoc_stage;
+  }
 
   doing_det = 1;
 
@@ -8217,6 +9344,9 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
   s32 fd;
   u8  keeping = 0, res;
 
+  char  *qn = "";
+  s32 qinfo_fd;
+
   if (fault == crash_mode) {
 
     /* Keep only if there are new bits in the map, add to queue for
@@ -8231,12 +9361,25 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
 
     fn = alloc_printf("%s/queue/id:%06u,%s", out_dir, queued_paths,
                       describe_op(hnb));
-
 #else
 
     fn = alloc_printf("%s/queue/id_%06u", out_dir, queued_paths);
 
 #endif /* ^!SIMPLE_FILES */
+
+    if (argv_fuzz_flag == 1) {
+
+#ifndef SIMPLE_FILES
+
+      qn = alloc_printf("%s/queue_info/queue/id:%06u,%s", out_dir, queued_paths,
+                      describe_op(hnb));
+#else 
+
+      qn = alloc_printf("%s/queue_info/queue/id_%06u", out_dir, queued_paths);
+
+#endif /* ^!SIMPLE_FILES */ 
+
+    }
 
     add_to_queue(fn, len, 0);
 
@@ -8259,8 +9402,32 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
     if (fd < 0) PFATAL("Unable to create '%s'", fn);
     ck_write(fd, mem, len, fn);
     close(fd);
-
     keeping = 1;
+
+    if (argv_fuzz_flag == 1) {
+      FILE *outfp;
+      outfp = fopen(qn, "w");
+      fprintf(outfp, "argv : ");
+      char **now = queue_cur->argv;
+      while(*now) {
+        fprintf(outfp, " %s ", *now);
+	now++;
+      } 
+      fprintf(outfp, "\n");
+
+      std::string bool2st;
+      for (int i = 0;i < queue_cur->parameters.size();i++) {
+        if (queue_cur->parameters[i] == true) {
+          bool2st+="1";
+        } else {
+          bool2st+="0";
+        }
+      }
+
+      fprintf(outfp, "parameters : %s\n", bool2st.c_str());
+      fclose(outfp);
+      ck_free(qn);
+    }
 
   }
 
@@ -8323,6 +9490,21 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
 
 #endif /* ^!SIMPLE_FILES */
 
+      if (argv_fuzz_flag == 1) {
+
+#ifndef SIMPLE_FILES
+
+        qn = alloc_printf("%s/queue_info/hangs/id:%06u,%s", out_dir, unique_hangs,
+                        describe_op(hnb));
+#else
+
+        qn = alloc_printf("%s/queue_info/hangs/id_%06u", out_dir, unique_hangs);
+
+#endif /* ^!SIMPLE_FILES */
+
+      }
+
+
       unique_hangs++;
 
       last_hang_time = get_cur_time();
@@ -8367,6 +9549,21 @@ keep_as_crash:
 
 #endif /* ^!SIMPLE_FILES */
 
+      if (argv_fuzz_flag == 1) {
+
+#ifndef SIMPLE_FILES
+
+        qn = alloc_printf("%s/queue_info/crashes/id:%06u,%s", out_dir, unique_crashes,
+                        describe_op(hnb));
+#else
+
+        qn = alloc_printf("%s/queue_info/crashes/id_%06u", out_dir, unique_crashes);
+
+#endif /* ^!SIMPLE_FILES */
+
+      }
+
+
       unique_crashes++;
 
       last_crash_time = get_cur_time();
@@ -8389,6 +9586,32 @@ keep_as_crash:
   close(fd);
 
   ck_free(fn);
+
+  if (argv_fuzz_flag == 1) {
+    FILE *outfp;
+    outfp = fopen(qn, "w");
+    fprintf(outfp, "argvs : ");
+    char **now = argv;
+    while(*now) {
+      fprintf(outfp, " %s ", *now);
+        now++;
+    }
+    fprintf(outfp, "\n");
+
+    std::string bool2st;
+    for (int i = 0;i < queue_cur->parameters.size();i++) {
+      if (queue_cur->parameters[i] == true) {
+        bool2st+="1";
+      } else {
+        bool2st+="0";
+      }
+    }
+    fprintf(outfp, "parameters : %s\n", bool2st.c_str());
+    fclose(outfp);
+    ck_free(qn);
+  }
+
+
 
   return keeping;
 

@@ -1,0 +1,66 @@
+<root>
+  <VARIABLE>
+    <NAME>\[BFDNAME\]</NAME>
+    <ELEMENT>elf64-x86-64</ELEMENT>
+    <ELEMENT>elf32-i386</ELEMENT>
+    <ELEMENT>elf32-iamcu</ELEMENT>
+    <ELEMENT>elf32-x86-64</ELEMENT>
+    <ELEMENT>pei-i386</ELEMENT>
+    <ELEMENT>pei-x86-64</ELEMENT>
+    <ELEMENT>elf64-l1om</ELEMENT>
+    <ELEMENT>elf64-k1om</ELEMENT>
+    <ELEMENT>elf64-little</ELEMENT>
+    <ELEMENT>elf64-big</ELEMENT>
+    <ELEMENT>elf32-little</ELEMENT>
+    <ELEMENT>elf32-big</ELEMENT>
+    <ELEMENT>srec</ELEMENT>
+    <ELEMENT>symbolsrec</ELEMENT>
+    <ELEMENT>verilog</ELEMENT>
+    <ELEMENT>tekhex</ELEMENT>
+    <ELEMENT>binary</ELEMENT>
+    <ELEMENT>ihex</ELEMENT>
+    <ELEMENT>plugin</ELEMENT>
+  </VARIABLE>
+  <VARIABLE>
+    <NAME>\[RADIX\]</NAME>
+    <ELEMENT>10</ELEMENT>
+    <ELEMENT>16</ELEMENT>
+    <ELEMENT>8</ELEMENT>
+ </VARIABLE>
+ <VARIABLE>
+    <NAME>\[FORMAT\]</NAME>
+    <ELEMENT>sysv</ELEMENT>
+    <ELEMENT>berkeley</ELEMENT>
+    <ELEMENT>gnu</ELEMENT>
+  </VARIABLE>
+
+
+
+
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>--format=\[FORMAT\]</ELEMENT>
+  </PARAMETER>	  
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>--radix=\[RADIX\]</ELEMENT>
+  </PARAMETER>
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>--common</ELEMENT>
+  </PARAMETER>
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>-t</ELEMENT>
+  </PARAMETER>
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>--target=\[BFDNAME\]</ELEMENT>
+  </PARAMETER>
+
+  <PARAMETER>
+    <MUST>true</MUST>
+    <ELEMENT>\[INPUT_FILE\]</ELEMENT>
+  </PARAMETER>
+  
+</root>

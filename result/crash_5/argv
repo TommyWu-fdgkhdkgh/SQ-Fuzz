@@ -1,0 +1,2 @@
+argvs :  /home/tommy/fuzzLab/fuzz_proj_binutils/binutils-gdb-afl/binutils/strip-new  -I  elf64-x86-64  -O  elf64-x86-64  -R  .plt  --remove-relocations=.debug  -d  --strip-dwo  -K  9BvFPIbCQk  -N  9p?yP <n>J  -D  -U  -X  --keep-file-symbols  --only-keep-debug  ./3-13-strip-new/fuzzer02/.cur_input  -o  ./stripoutput 
+parameters : 11011011010101100111

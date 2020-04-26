@@ -1,0 +1,71 @@
+<root>
+  <VARIABLE>
+    <NAME>\[LEVEL\]</NAME>
+    <ELEMENT>0</ELEMENT>
+    <ELEMENT>1</ELEMENT>
+    <ELEMENT>2</ELEMENT>
+    <ELEMENT>3</ELEMENT>
+    <ELEMENT>4</ELEMENT>
+    <ELEMENT>5</ELEMENT>
+    <ELEMENT>6</ELEMENT>
+    <ELEMENT>7</ELEMENT>
+    <ELEMENT>8</ELEMENT>
+  </VARIABLE>
+
+
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>-p</ELEMENT>
+    <ELEMENT>\[STRING\]</ELEMENT>
+  </PARAMETER>	  
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>-r</ELEMENT>
+    <ELEMENT>\[STRING\]</ELEMENT>
+  </PARAMETER>
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>-A</ELEMENT>
+    <ELEMENT>\[LEVEL\]</ELEMENT>
+  </PARAMETER>
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>-C</ELEMENT>
+    <ELEMENT>\[UNSIINT\]</ELEMENT>
+  </PARAMETER>
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>-W</ELEMENT>
+    <ELEMENT>\[UNSIINT\]</ELEMENT>
+  </PARAMETER>
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>-H</ELEMENT>
+    <ELEMENT>\[UNSIINT\]</ELEMENT>
+  </PARAMETER>
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>-I</ELEMENT>
+  </PARAMETER>
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>-S</ELEMENT>
+    <ELEMENT>\[UNSIINT\]</ELEMENT>
+  </PARAMETER>
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>-U</ELEMENT>
+    <ELEMENT>/home/tommy/fuzzLab/fuzz_proj_mupdf/mupdf-afl/docs/style.css</ELEMENT>
+  </PARAMETER>
+  <PARAMETER>
+    <MUST>false</MUST>
+    <ELEMENT>-X</ELEMENT>
+  </PARAMETER>
+
+
+  <PARAMETER>
+    <MUST>true</MUST>
+    <ELEMENT>\[INPUT_FILE\]</ELEMENT>
+  </PARAMETER>
+  
+</root>

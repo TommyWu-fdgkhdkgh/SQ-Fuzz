@@ -1,0 +1,4 @@
+break main
+break argv_fuzz_one
+disable $bpnum
+

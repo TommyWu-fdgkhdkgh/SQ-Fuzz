@@ -1,0 +1,151 @@
+#!/bin/sh
+#
+# american fuzzy lop - Advanced Persistent Graphing
+# -------------------------------------------------
+#
+# Written and maintained by Michal Zalewski <lcamtuf@google.com>
+# Based on a design & prototype by Michael Rash.
+#
+# Copyright 2014, 2015 Google LLC All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at:
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+
+echo "progress plotting utility for afl-fuzz by <lcamtuf@google.com>"
+echo "progress custom plotting utility for SQ-Fuzz by <fdgkhdkgh@google.com>"
+echo
+
+if [ ! "$#" = "3" ]; then
+
+  cat 1>&2 <<_EOF_
+This program generates gnuplot images from afl-fuzz output data. Usage:
+
+$0 total_state_dir graph_output_dir graph_title
+
+The afl_state_dir parameter should point to an existing state directory for any
+active or stopped instance of afl-fuzz; while graph_output_dir should point to
+an empty directory where this tool can write the resulting plots to.
+
+The program will put index.html and three PNG images in the output directory;
+you should be able to view it with any web browser of your choice.
+
+_EOF_
+
+  exit 1
+
+fi
+
+if [ "$AFL_ALLOW_TMP" = "" ]; then
+
+  echo "$1" | grep -qE '^(/var)?/tmp/'
+  T1="$?"
+
+  echo "$2" | grep -qE '^(/var)?/tmp/'
+  T2="$?"
+
+  if [ "$T1" = "0" -o "$T2" = "0" ]; then
+
+    echo "[-] Error: this script shouldn't be used with shared /tmp directories." 1>&2
+    exit 1
+
+  fi
+
+fi
+
+if [ ! -f "$1/SQ-Fuzz-plot_data" ]; then
+
+  echo "[-] Error: input directory is not valid (missing 'SQ-Fuzz-plot_data')." 1>&2
+  exit 1
+
+fi
+
+if [ ! -f "$1/AFLfast-plot_data" ]; then
+
+  echo "[-] Error: input directory is not valid (missing 'AFLfast-plot_data')." 1>&2
+  exit 1
+
+fi
+
+if [ ! -f "$1/AFL-plot_data" ]; then
+
+  echo "[-] Error: input directory is not valid (missing 'AFL-plot_data')." 1>&2
+  exit 1
+
+fi
+
+
+#BANNER="`cat "$1/fuzzer_stats" | grep '^afl_banner ' | cut -d: -f2- | cut -b2-`"
+
+#test "$BANNER" = "" && BANNER="(none)"
+
+GNUPLOT=`which gnuplot 2>/dev/null`
+
+if [ "$GNUPLOT" = "" ]; then
+
+  echo "[-] Error: can't find 'gnuplot' in your \$PATH." 1>&2
+  exit 1
+
+fi
+
+mkdir "$2" 2>/dev/null
+
+if [ ! -d "$2" ]; then
+
+  echo "[-] Error: unable to create the output directory - pick another location." 1>&2
+  exit 1
+
+fi
+
+rm -f "$2/high_freq.png" "$2/low_freq.png" "$2/exec_speed.png"
+mv -f "$2/index.html" "$2/index.html.orig" 2>/dev/null
+
+echo "[*] Generating plots..."
+
+(
+
+cat <<_EOF_
+
+set output "fig1.png"
+set size 1, 1
+set multiplot layout 2,2 
+set size 0.5, 0.5
+
+set title 'test'
+plot '$1/SQ-Fuzz-plot_data' using 1:2 linecolor rgb '#000000' linewidth 3, \\
+     '$1/AFLfast-plot_data' using 1:2 linecolor rgb '#c00080' linewidth 3, \\
+     '$1/AFL-plot_data' using 1:2 linecolor rgb '#0090ff' linewidth 3, '$1/SQ-Fuzz-no-cov-plot_data' using 1:2 linecolor rgb '#ff00ff' linewidth 3
+
+set title 'test2'
+plot '$1/SQ-Fuzz-plot_data' using 1:2  linecolor rgb '#000000' linewidth 3, \\
+     '$1/AFLfast-plot_data' using 1:2  linecolor rgb '#c00080' linewidth 3, \\
+     '$1/AFL-plot_data' using 1:2  linecolor rgb '#0090ff' linewidth 3, '$1/SQ-Fuzz-no-cov-plot_data' using 1:2 linecolor rgb '#ff00ff' linewidth 3 
+
+
+
+unset multiplot
+
+_EOF_
+
+) | gnuplot 
+
+if [ ! -s "$2/total.png" ]; then
+
+  echo "[-] Error: something went wrong! Perhaps you have an ancient version of gnuplot?" 1>&2
+  exit 1
+
+fi
+
+# Make it easy to remotely view results when outputting directly to a directory
+# served by Apache or other HTTP daemon. Since the plots aren't horribly
+# sensitive, this seems like a reasonable trade-off.
+
+chmod 755 "$2"
+chmod 644 "$2/total.png"
+
+echo "[+] All done - enjoy your charts!"
+
+exit 0

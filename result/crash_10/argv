@@ -1,0 +1,5 @@
+argvs :  /home/tommy/fuzzLab/fuzz_proj_binutils/binutils-gdb-afl/binutils/strip-new  -R  .fini  --remove-relocations=.text  -s  -d  --strip-unneeded  -K  U}Hw=&Y[  -M  -N  %/l0@bLcVV  -p  -U  -w  -x  ./3-19-strip-new/fuzzer02/.cur_input  -o  ./stripoutput 
+arameters : 00011110111110111000
+
+
+/home/tommy/fuzzLab/fuzz_proj_binutils/binutils-gdb-afl/binutils/strip-new  -R  .fini   --strip-unneeded  ./sample  -o  ./stripoutput

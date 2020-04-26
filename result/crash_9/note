@@ -1,0 +1,5 @@
+/home/tommy/fuzzLab/fuzz_proj_binutils/binutils-gdb-afl/binutils/objcopy  -B  k1om   ./sample  ./objcopy
+
+
+被修好了QQ
+

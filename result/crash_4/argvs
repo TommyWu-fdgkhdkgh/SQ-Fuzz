@@ -1,0 +1,1 @@
+../../../fuzz_proj_binutils/binutils-gdb/binutils/objcopy   -j  .debug   --debugging  --pad-to  1   ./id:000002,sig:11,src:008895,op:argv1,rep:32  ./objcopy_output

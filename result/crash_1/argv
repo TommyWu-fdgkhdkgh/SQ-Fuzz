@@ -1,0 +1,1 @@
+objcopy  -I  binary  -O  pei-i386  --change-leading-char   ./sample_input ./objcopy_output
