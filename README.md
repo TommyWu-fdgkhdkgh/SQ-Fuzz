@@ -4,8 +4,6 @@ SQ-Fuzz : Coverage Guided Fuzzing with Multi-target
 
 # Bug reported
 
-# binutils
-
 [1]https://sourceware.org/bugzilla/show_bug.cgi?id=25191
 [2]https://sourceware.org/bugzilla/show_bug.cgi?id=25196
 [3]https://sourceware.org/bugzilla/show_bug.cgi?id=25197
