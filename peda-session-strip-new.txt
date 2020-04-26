@@ -1,7 +1,0 @@
-break main
-break copy_file
-break *0x5555555af250
-break *0x5555555af250
-
-
-
