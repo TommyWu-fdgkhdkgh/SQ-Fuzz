@@ -7,6 +7,13 @@ SQ-Fuzz : Coverage Guided Fuzzing with Multi-target
 先觀察程式執行有哪些參數，並依照參數撰寫設定檔
 使用設定檔來協助模糊測試
 
+## 簡易使用範例
+
+```=c
+./a.out -i INPUT_DIR -o OUTPUT_DIR -s ./setting_objcopy/parameters.xml -- objcopy @@ ./output1
+```
+
+
 # TODO
 
 程式碼有許多有待加強的部分。
@@ -32,3 +39,7 @@ SQ-Fuzz : Coverage Guided Fuzzing with Multi-target
 [15]https://sourceware.org/bugzilla/show_bug.cgi?id=25688
 [16]https://sourceware.org/bugzilla/show_bug.cgi?id=25699
 [17]https://sourceware.org/bugzilla/show_bug.cgi?id=25714
+
+# CONTACT
+
+有任何問題歡迎來信 fdgkhdkgh@gmail.com
